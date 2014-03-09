@@ -35,7 +35,6 @@
 class Pathtracer {
 public:
 	Pathtracer(uint32_t w, uint32_t h, int nBounces) : width(w), height(h), iteration(0), maxBounces(nBounces) { }
-	~Pathtracer();
 	bool Init(const Camera &camera, const std::vector<Material> &mv, const std::vector<Primitive> &pv, const std::vector<Light> &lv);
 	void Run(float *devBuffer);
 	void Release();

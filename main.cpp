@@ -30,6 +30,7 @@ bool InitGL(int *argc, char** argv);
 void InitPBO();
 bool InitPathtracer();
 void RunPathtracer();
+void ReleasePathtracer();
 
 void Display();
 void Keyboard(unsigned char key, int /*x*/, int /*y*/);
@@ -167,6 +168,14 @@ bool InitPathtracer() {
 }
 
 /**
+ * Release resources
+ */
+void ReleasePathtracer() {
+	pathtracer->Release();
+	delete pathtracer;
+}
+
+/**
  * default display method
  * maps the pbo to the device buffer and calls the kernel before displaying
  * the result as a texture in OpenGL
@@ -255,4 +264,5 @@ int main(int argc, char** argv) {
 
 	printf("Starting main loop\n");
 	glutMainLoop();
+	ReleasePathtracer();
 }
