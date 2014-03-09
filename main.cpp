@@ -181,7 +181,6 @@ void ReleasePathtracer() {
 void Display() {
 	//Clear the color buffer
 	glClear(GL_COLOR_BUFFER_BIT);
-
 	
 	float* devBuffer = NULL;
 	CudaSafeCall(cudaGLMapBufferObject((void**)&devBuffer, pbo));

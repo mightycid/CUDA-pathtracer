@@ -64,8 +64,9 @@ __global__ void kernel(const Scene *scene, float *buffer, uint32_t bufferSize, f
 	const uint32_t index = (y*scene->camera.Width()+x);
 	const uint32_t fbindex = index*3;
 
-	if(fbindex >= bufferSize)
+	if(fbindex >= bufferSize) {
 		return;
+	}
 
 	int rngOffset = index*4*maxBounces*3;
 	int numCameraSamples = 4*2;
@@ -81,6 +82,7 @@ __global__ void kernel(const Scene *scene, float *buffer, uint32_t bufferSize, f
 
 	float gamma = 2.2f;
 	float invIteration = 1.f/(float)iteration;
+	
 	buffer[fbindex]   = ((buffer[fbindex]   * (iteration-1) + GAMMA_FLOAT(c.r, gamma)) * invIteration);
 	buffer[fbindex+1] = ((buffer[fbindex+1] * (iteration-1) + GAMMA_FLOAT(c.g, gamma)) * invIteration);
 	buffer[fbindex+2] = ((buffer[fbindex+2] * (iteration-1) + GAMMA_FLOAT(c.b, gamma)) * invIteration);
@@ -189,6 +191,7 @@ bool Pathtracer::Init(const Camera &camera, const std::vector<Material> &mv, con
 }
 
 void Pathtracer::Run(float* devBuffer) {
+
 	// create random numbers
 	uint32_t sampleSize = width*height*4*2*maxBounces*3;
 	curandGenerator_t gen;
@@ -205,6 +208,7 @@ void Pathtracer::Run(float* devBuffer) {
 
 	//launch kernel
 	kernel<<<dimGrid, dimBlock>>>(scene, devBuffer, bufferSize, devRand, ++iteration, maxBounces);
+
 	cudaThreadSynchronize();
 	CudaCheckError();
 }
