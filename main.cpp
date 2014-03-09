@@ -23,8 +23,6 @@
 #include "cutil.h"
 
 #include <cuda_gl_interop.h>
-#include <helper_cuda.h>
-#include <helper_cuda_gl.h>
 
 bool InitGL(int *argc, char** argv);
 void InitPBO();

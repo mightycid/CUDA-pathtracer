@@ -40,7 +40,7 @@ public:
 	 *
 	 * @return true if ray hit an object
 	 */
-	CUDA_DEVICE bool Intersect(const Ray &ray, Intersection *isect, float tmin=EPSILON, float tmax=FLT_PINF) const {
+	CUDA_DEVICE bool Intersect(const Ray &ray, Intersection *isect, float tmin=EPSILON, float tmax=INF) const {
 		Intersection is;
 		bool found = false;
 		for(uint32_t i=0; i<primitives.size; ++i) {
@@ -67,7 +67,7 @@ public:
 	 *
 	 * @return true if ray hit an object
 	 */
-	CUDA_DEVICE bool IntersectP(const Ray &ray, float tmin=EPSILON, float tmax=FLT_PINF) const {
+	CUDA_DEVICE bool IntersectP(const Ray &ray, float tmin=EPSILON, float tmax=INF) const {
 		Intersection is;
 		for(uint32_t i=0; i<primitives.size; ++i) {
 			if(primitives[i].IntersectP(ray, tmin, tmax))

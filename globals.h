@@ -49,12 +49,8 @@
 
 #ifdef __CUDACPP__
 #  define INF 0x7f800000
-#  define FLT_PINF 0x7f800000
-#  define FLT_NINF 0xff800000
 #else
 #  define INF FLT_MAX
-#  define FLT_PINF FLT_MAX
-#  define FLT_NINF -FLT_PINF
 #endif
 
 #define isnan(f) _isnan(f)
