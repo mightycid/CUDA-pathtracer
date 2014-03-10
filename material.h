@@ -107,6 +107,7 @@ public:
 
 	Color color;
 	float coef;
+	bool emitting;
 	MaterialType type;
 };
 
@@ -119,6 +120,7 @@ inline Material CreateDiffuseMaterial(const Color &color, float coef) {
 	Material mat;
 	mat.color = color;
 	mat.coef = coef;
+	mat.emitting = false;
 	mat.type = DIFFUSE;
 	return mat;
 }
@@ -127,6 +129,7 @@ inline Material CreateSpecularMaterial(const Color &color, float coef) {
 	Material mat;
 	mat.color = color;
 	mat.coef = coef;
+	mat.emitting = false;
 	mat.type = SPECULAR;
 	return mat;
 }
@@ -135,6 +138,16 @@ inline Material CreateTransmissiveMaterial(const Color &color, float coef) {
 	Material mat;
 	mat.color = color;
 	mat.coef = coef;
+	mat.emitting = false;
+	mat.type = TRANSMISSIVE;
+	return mat;
+}
+
+inline Material CreateEmittingMaterial(const Color &color) {
+	Material mat;
+	mat.color = color;
+	mat.coef = 0.f;
+	mat.emitting = true;
 	mat.type = TRANSMISSIVE;
 	return mat;
 }

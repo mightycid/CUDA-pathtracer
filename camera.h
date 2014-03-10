@@ -33,22 +33,16 @@ public:
 	Camera() {}
 	Camera(const Point &eye, const Point &lookat, const Vec &up, uint32_t w, uint32_t h, float lr, float fd, float fov)
 			: width(w), height(h), pos(eye), lensRadius(lr), focalDistance(fd), fov(fov) {
-		// Initialize first three columns of viewing matrix
-		Vec dir = (lookat - eye).Normalize();
-		Vec left = (up.Normalize().Cross(dir)).Normalize();
-		Vec newUp = dir.Cross(left);
+		
+		float dist;
+		Vec dir = (lookat - eye).Normalize(&dist);
+		u = (dir.Cross(up)).Normalize();
+		v = u.Cross(dir);
 
 		float aspect = (float)height / (float)width;
 		float hfov = fov;
 		float vfov = hfov*aspect;
-
-		Vec gaze = lookat - eye;
-		float dist = gaze.Length();
-		gaze.Normalize();
-
-		u = gaze.Cross(up).Normalize();
-		v = u.Cross(gaze).Normalize();
-
+		
 		dist *= 2.f;
 		float magnitude = dist * tanf(Radians(hfov*0.5f)) / width;
 		u *= magnitude;
@@ -64,7 +58,7 @@ public:
 
 	CUDA_DEVICE Ray GenerateRay(int x, int y, const CameraSample &sample = CameraSample()) const {
 		//TODO depth of field
-		return Ray(pos, (firstRayDir + u * ((float)x + sample.u) - v * ((float)y + sample.v)).Normalize());
+		return Ray(pos, (firstRayDir - v * ((float)y + sample.v) + u * ((float)x + sample.u)).Normalize());
 	}
 
 	CUDA_HOST_DEVICE uint32_t Width() const { return width; }
@@ -83,6 +77,7 @@ private:
 	uint32_t width;
 	uint32_t height;
 
+	Matrix mat;
 	Point pos;
 	Vec u, v;
 	Vec firstRayDir;

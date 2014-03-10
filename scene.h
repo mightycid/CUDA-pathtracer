@@ -32,8 +32,8 @@
  */
 class Scene {
 public:
-	Scene(const Camera &c, const MaterialList &ml, const PrimitiveList &pl, const LightList &ll)
-		: camera(c), materials(ml), primitives(pl), lights(ll) {}
+	Scene(const MaterialList &ml, const PrimitiveList &pl, const LightList &ll)
+		: materials(ml), primitives(pl), lights(ll) {}
 
 	/**
 	 * Ray - scene intersection test
@@ -107,7 +107,6 @@ public:
 		return Ld;
 	}
 
-	const Camera camera;
 	const PrimitiveList primitives;
 	const LightList lights;
 	const MaterialList materials;

@@ -34,21 +34,26 @@
 
 class Pathtracer {
 public:
-	Pathtracer(uint32_t w, uint32_t h, int nBounces) : width(w), height(h), iteration(0), maxBounces(nBounces), bufferSize(w*h*3) { }
-	bool Init(const Camera &camera, const std::vector<Material> &mv, const std::vector<Primitive> &pv, const std::vector<Light> &lv);
+	Pathtracer(Camera *cam, int nBounces) : camera(cam), iteration(0), maxBounces(nBounces) {
+		width = cam->Width();
+		height = cam->Height();
+	}
+	bool Init(const std::vector<Material> &mv, const std::vector<Primitive> &pv, const std::vector<Light> &lv);
 	void Run(float *devBuffer);
 	void Release();
 	
+	void Reset();
 	uint32_t GetIteration() const { return iteration; }
 
 private:
+	Camera *camera;			//camera instance
 	Scene *scene;			//pointer to scene object on GPU
 	float *devRand;			//pointer to random numbers on GPU
+	Ray *rayPool;			//pointer to ray pool
 	uint32_t iteration;		//current sample iteration on GPU
 
 	uint32_t width;			//width of rendered image
 	uint32_t height;		//height of rendered image
-	uint32_t bufferSize;	//buffersize in pixels
 	uint32_t sampleSize;	//number of random numbers
 
 	int maxBounces;			//maximum number of bounces per array

@@ -35,6 +35,7 @@ void Keyboard(unsigned char key, int /*x*/, int /*y*/);
 void PressKey(int key, int /*x*/, int /*y*/);
 void GetFPS();
 
+Camera camera;
 float timer = 0.0f;
 uint32_t frameCount = 0, timeBase = 0;
 uint32_t width, height;
@@ -45,9 +46,11 @@ Pathtracer *pathtracer = NULL;
 
 bool InitGL(int argc, char** argv) {
 	glutInit(&argc, argv);
+
 	glutInitContextFlags(GLUT_FORWARD_COMPATIBLE);
 	glutInitContextProfile(GLUT_CORE_PROFILE);
-    glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
+
+    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
     glutInitWindowSize(width, height);
     glutCreateWindow("Pathtracer");
     glutDisplayFunc(Display);
@@ -55,7 +58,7 @@ bool InitGL(int argc, char** argv) {
     glutKeyboardFunc(Keyboard);
 	//TODO mouse camera movement
     //glutMotionFunc(motion);
-	glutIgnoreKeyRepeat(1);
+	//glutIgnoreKeyRepeat(1);
 	glutSpecialFunc(PressKey);
 
 	glewInit();
@@ -69,6 +72,7 @@ bool InitGL(int argc, char** argv) {
     // default initialization
     glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
+	glDisable(GL_DEPTH_TEST);
 
     // viewport
 	glViewport(0, 0, (GLsizei)width, (GLsizei)height);
@@ -103,9 +107,8 @@ void InitPBO() {
 
   glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_FLOAT, NULL);
 
-  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-
+  glTexParameterf(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+  glTexParameterf(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 }
 
 /**
@@ -144,19 +147,18 @@ void InitScene(Camera *camera, std::vector<Material> *mv, std::vector<Primitive>
  * Initialize pathtracer
  */
 bool InitPathtracer() {
-	Camera camera;
 	std::vector<Material> materials;
 	std::vector<Primitive> primitives;
 	std::vector<Light> lights;
 	InitScene(&camera, &materials, &primitives, &lights);
 	
-	pathtracer = new Pathtracer(width, height, 10);
+	pathtracer = new Pathtracer(&camera, 10);
 	if(!pathtracer) {
         fprintf(stderr, "ERROR: Could not create Pathtracer instance.");
         fflush(stderr);
         return false;
 	}
-	if(!pathtracer->Init(camera, materials, primitives, lights)) {
+	if(!pathtracer->Init(materials, primitives, lights)) {
         fprintf(stderr, "ERROR: Could not initialize Pathtracer.");
         fflush(stderr);
         return false;
@@ -182,6 +184,8 @@ void Display() {
 	//Clear the color buffer
 	glClear(GL_COLOR_BUFFER_BIT);
 	
+	if(camera.IsUpdated()) pathtracer->Reset();
+
 	float* devBuffer = NULL;
 	CudaSafeCall(cudaGLMapBufferObject((void**)&devBuffer, pbo));
 
@@ -190,17 +194,17 @@ void Display() {
 	
 	CudaSafeCall(cudaGLUnmapBufferObject(pbo));
 
+	// render result as texure
 	glBindBuffer( GL_PIXEL_UNPACK_BUFFER, pbo);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGB, GL_FLOAT, NULL);
 
 	glBegin(GL_QUADS); {
-		glTexCoord2f(0, 1); glVertex3f(-1, -1, 0);
 		glTexCoord2f(0, 0); glVertex3f(-1, 1, 0);
 		glTexCoord2f(1, 0); glVertex3f(1, 1, 0);
 		glTexCoord2f(1, 1); glVertex3f(1, -1, 0);
+		glTexCoord2f(0, 1); glVertex3f(-1, -1, 0);
 	} glEnd();
 
-	//Draw buffer
 	glutSwapBuffers();
 	GetFPS();
 }
@@ -217,6 +221,20 @@ void Keyboard(unsigned char key, int /*x*/, int /*y*/) {
  * TODO camera movement through keyboard commands
  */
 void PressKey(int key, int /*x*/, int /*y*/) {
+	switch(key) {
+		case GLUT_KEY_UP:
+			camera.Translate(Vec(0.f, 0.05f, 0.f));
+			break;
+		case GLUT_KEY_RIGHT:
+			camera.Translate(Vec(0.05f, 0.f, 0.f));
+			break;
+		case GLUT_KEY_DOWN:
+			camera.Translate(Vec(0.f, -0.05f, 0.f));
+			break;
+		case GLUT_KEY_LEFT:
+			camera.Translate(Vec(-0.05f, 0.f, 0.f));
+			break;
+	}
 }
 
 void GetFPS() {
@@ -251,7 +269,7 @@ int main(int argc, char** argv) {
 	}
 	printf("done!\n");
 
-	printf("Initializing Pathtracer...\n");
+	printf("Initializing Pathtracer...");
 	if(!InitPathtracer()) {
         fprintf(stderr, "ERROR: Could not initialize Pathtracer.");
         fflush(stderr);

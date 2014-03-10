@@ -58,25 +58,37 @@ struct CameraSamples {
 
 __device__ Color Trace(const Ray &ray, const Scene *scene, float* rng, int maxBounces=10);
 
-__global__ void kernel(const Scene *scene, float *buffer, uint32_t bufferSize, float *rng, uint32_t iteration, int maxBounces) {
+__global__ void GenerateRayPool(Camera camera, Ray *rayBuffer, float *devRand) {
 	const uint32_t x = threadIdx.x + blockIdx.x * blockDim.x;
 	const uint32_t y = threadIdx.y + blockIdx.y * blockDim.y;
-	const uint32_t index = (y*scene->camera.Width()+x);
-	const uint32_t fbindex = index*3;
+	const uint32_t index = (y*camera.Width()+x);
 
-	if(fbindex >= bufferSize) {
+	if(x >= camera.Width() || y >= camera.Height()) {
 		return;
 	}
 
-	int rngOffset = index*4*maxBounces*3;
-	int numCameraSamples = 4*2;
-	CameraSamples samples(&rng[rngOffset]);
+	CameraSamples samples(&devRand[index*4*2]);
+	for(int i=0; i<4; ++i)
+		rayBuffer[index*4+i] = camera.GenerateRay(x, y, samples[i]);
+}
+
+__global__ void RenderKernel(const Scene *scene, float *buffer, float *rng, Ray *rayPool, uint32_t width, uint32_t height, uint32_t iteration, int maxBounces) {
+	const uint32_t x = threadIdx.x + blockIdx.x * blockDim.x;
+	const uint32_t y = threadIdx.y + blockIdx.y * blockDim.y;
+	const uint32_t index = (y*width+x);
+	const uint32_t fbindex = index*3;
+
+	if(x >= width || y >= height) {
+		return;
+	}
+
+	int rngOffset = index*maxBounces*3;
 
 	Color c;
 	// 2x2 Subsampling
 	for(int i=0; i<4; ++i) {
-		Ray ray = scene->camera.GenerateRay(x, y, samples[i]);
-		c += Trace(ray, scene, &rng[rngOffset+numCameraSamples], maxBounces);
+		Ray ray = rayPool[index*4+i];
+		c += Trace(ray, scene, &rng[rngOffset], maxBounces);
 	}
 	c /= 4.f;
 
@@ -155,7 +167,7 @@ __device__ Color Trace(const Ray &r, const Scene *scene, float* rng, int maxBoun
 	return L;
 }
 
-bool Pathtracer::Init(const Camera &camera, const std::vector<Material> &mv, const std::vector<Primitive> &pv, const std::vector<Light> &lv) {
+bool Pathtracer::Init(const std::vector<Material> &mv, const std::vector<Primitive> &pv, const std::vector<Light> &lv) {
 
 	//copy primitive list to device
 	Primitive* devPrimitives = NULL;
@@ -179,24 +191,28 @@ bool Pathtracer::Init(const Camera &camera, const std::vector<Material> &mv, con
 	MaterialList matList = MaterialList(devMats, numMats);
 
 	//copy scene to device
-	Scene hostScene (camera, matList, primList, lightList);
+	Scene hostScene (matList, primList, lightList);
 	CudaSafeCall(cudaMalloc((void**)&(scene), sizeof(Scene)));
 	CudaSafeCall(cudaMemcpy(scene, &hostScene, sizeof(Scene), cudaMemcpyHostToDevice));
 
 	//allocate memory for random numbers
-	sampleSize = width*height*4*2*maxBounces*3;
+	sampleSize = width*height*SAMPLES_PER_PIXEL*maxBounces*3;
 	CudaSafeCall(cudaMalloc((void**)&(devRand), sampleSize*sizeof(float)));
+
+	//allocate memory for ray pool
+	rayPool = NULL;
+	size_t numRays = width*height*4;
+	CudaSafeCall(cudaMalloc((void**)&(rayPool), numRays*sizeof(Ray)));
 
 	return true;
 }
 
 void Pathtracer::Run(float* devBuffer) {
-
 	// create random numbers
-	uint32_t sampleSize = width*height*4*2*maxBounces*3;
+	uint32_t sampleSize = width*height*SAMPLES_PER_PIXEL*maxBounces*3;
 	curandGenerator_t gen;
 	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_MTGP32);
-	curandSetPseudoRandomGeneratorSeed(gen, time(NULL)); //samples=seed
+	curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
 	curandGenerateUniform(gen, devRand, sampleSize);
 	curandDestroyGenerator(gen);
 	CudaCheckError();
@@ -206,11 +222,20 @@ void Pathtracer::Run(float* devBuffer) {
 	dim3 dimGrid(width/dimx, height/dimy);
 	dim3 dimBlock(dimx, dimy);
 
+	GenerateRayPool<<<dimGrid, dimBlock>>>(*camera, rayPool, devRand);
+	cudaThreadSynchronize();
+	CudaCheckError();
+
 	//launch kernel
-	kernel<<<dimGrid, dimBlock>>>(scene, devBuffer, bufferSize, devRand, ++iteration, maxBounces);
+	uint32_t randOffset = width*height*SAMPLES_PER_PIXEL;
+	RenderKernel<<<dimGrid, dimBlock>>>(scene, devBuffer, &devRand[randOffset], rayPool, width, height, ++iteration, maxBounces);
 
 	cudaThreadSynchronize();
 	CudaCheckError();
+}
+
+void Pathtracer::Reset() {
+	iteration = 0;
 }
 
 void Pathtracer::Release() {
