@@ -18,11 +18,12 @@
  */
 
 #include "globals.h"
-#include "scene.h"
 #include "pathtracer.h"
 #include "cutil.h"
 
 #include <cuda_gl_interop.h>
+
+#define CAM_TRANSLATE_DELTA 0.5f
 
 bool InitGL(int *argc, char** argv);
 void InitPBO();
@@ -58,7 +59,6 @@ bool InitGL(int argc, char** argv) {
     glutKeyboardFunc(Keyboard);
 	//TODO mouse camera movement
     //glutMotionFunc(motion);
-	//glutIgnoreKeyRepeat(1);
 	glutSpecialFunc(PressKey);
 
 	glewInit();
@@ -117,30 +117,43 @@ void InitPBO() {
  * TODO: configuration file parsing
  */
 void InitScene(Camera *camera, std::vector<Material> *mv, std::vector<Primitive> *pv, std::vector<Light> *lv) {
-	*camera = Camera(Point(5,4,18), Point(0,1,0), Vec(0,1,0), width, height, 0.f, 0.f, 40.f);
+	*camera = Camera(Point(0,45,79.5), Point(0,35,0), Vec(0,1,0), width, height, 0.f, 0.f, 60.f);
 
 	*mv = std::vector<Material>();
 	
 	mv->push_back(CreateDiffuseMaterial(Color(1.f, 1.f, 1.f), 0.f)); // default
-	mv->push_back(CreateDiffuseMaterial(Color(1.f, 1.f, 1.f), 0.f)); // 1
-	mv->push_back(CreateDiffuseMaterial(Color(1.f, 0.f, 0.f), 1.f)); // 2
-	mv->push_back(CreateDiffuseMaterial(Color(0.f, 1.f, 0.f), 1.f)); // 3
-	mv->push_back(CreateSpecularMaterial(Color(1.f, 1.f, 1.f), 1.f)); // 4
-	mv->push_back(CreateTransmissiveMaterial(Color(1.f, 1.f, 1.f), 1.5f)); // 5
+	mv->push_back(CreateDiffuseMaterial(Color(0.75f, 0.25f, 0.25f), 0.f)); // 1
+	mv->push_back(CreateDiffuseMaterial(Color(0.25f, 0.25f, 0.75f), 0.f)); // 2
+	mv->push_back(CreateDiffuseMaterial(Color(0.75f, 0.75f, 0.75f), 0.f)); // 3
+	mv->push_back(CreateSpecularMaterial(Color(0.999f, 0.999f, 0.999f), 1.f)); // 4
+	mv->push_back(CreateTransmissiveMaterial(Color(0.999f, 0.999f, 0.999f), 1.5f)); // 5
 
 	*pv = std::vector<Primitive>();
-	pv->push_back(Primitive(Point(0.f,-1E+5f-2.f,0.f), 1E+5f, 1)); //floor
-	pv->push_back(Primitive(Point(0.f,1E+5f+10.f,0.f), 1E+5f, 1)); //ceiling
-	pv->push_back(Primitive(Point(0.f,0.f,1E+5f+20.f), 1E+5f, 1)); //back
-	pv->push_back(Primitive(Point(0.f,0.f,-1E+5f-20.f), 1E+5f, 1)); //front
-	pv->push_back(Primitive(Point(-1E+5f-10.f,0.f,0.f), 1E+5f, 2)); //left
-	pv->push_back(Primitive(Point(1E+5f+10.f,0.f,0.f), 1E+5f, 3)); //right
-	pv->push_back(Primitive(Point(-5.f,0.f,0.f), 2.f, 4));
-	pv->push_back(Primitive(Point(0.f,0.f,0.f), 2.f, 5));
-	pv->push_back(Primitive(Point(5.f,0.f,0.f), 2.f, 2));
+	//scene 1
+	/*pv->push_back(Primitive(Point(0.f,-1E+5f-1.f,0.f), 1E+5f, 1)); //floor
+	pv->push_back(Primitive(Point(0.f,1E+5f+3.f,0.f), 1E+5f, 1)); //ceiling
+	pv->push_back(Primitive(Point(0.f,0.f,-1E+5f-7.f), 1E+5f, 1)); //back
+	pv->push_back(Primitive(Point(0.f,0.f,1E+5f+7.f), 1E+5f, 1)); //front
+	pv->push_back(Primitive(Point(-1E+5f-4.f,0.f,0.f), 1E+5f, 2)); //left
+	pv->push_back(Primitive(Point(1E+5f+4.f,0.f,0.f), 1E+5f, 3)); //right
+	pv->push_back(Primitive(Point(-1.5f,0.f,0.f), 1.f, 4));
+	pv->push_back(Primitive(Point(1.5f,0.f,0.f), 1.f, 5));
+	pv->push_back(Primitive(Point(0.f,2.f,0.f), 0.5f, 1, 0));*/
+
+	//scene 2
+	pv->push_back(Primitive(Point( 1e5+50,     40,      0),  1e5, 2)); //left
+	pv->push_back(Primitive(Point(-1e5-50,     40,      0),  1e5, 1)); //right
+	pv->push_back(Primitive(Point(      0,     40,-1e5-80),  1e5, 3)); //back
+	pv->push_back(Primitive(Point(      0,     40, 1e5+80),  1e5, 3)); //front
+	pv->push_back(Primitive(Point(      0,   -1e5,      0),  1e5, 3)); //bottom
+	pv->push_back(Primitive(Point(      0, 1e5+80,      0),  1e5, 3)); //top
+	pv->push_back(Primitive(Point(    -25,   16.5,    -50), 16.5, 4));
+	pv->push_back(Primitive(Point(     25,   16.5,    -25), 16.5, 5));
+	pv->push_back(Primitive(Point(      0,  579.6,    -40),  500, 1, 0));
 
 	*lv = std::vector<Light>();
-	lv->push_back(Light(Point(0,4.995f,-3.f), Color(50.f,50.f,40.f)));
+	lv->push_back(Light(8, Color(12.f,12.f,12.f)));
+	//lv->push_back(Light(Point(50,20,40.f), Color(150.f,150.f,150.f)));
 }
 
 /**
@@ -223,16 +236,16 @@ void Keyboard(unsigned char key, int /*x*/, int /*y*/) {
 void PressKey(int key, int /*x*/, int /*y*/) {
 	switch(key) {
 		case GLUT_KEY_UP:
-			camera.Translate(Vec(0.f, 0.05f, 0.f));
+			camera.Translate(Vec(0.f, CAM_TRANSLATE_DELTA, 0.f));
 			break;
 		case GLUT_KEY_RIGHT:
-			camera.Translate(Vec(0.05f, 0.f, 0.f));
+			camera.Translate(Vec(CAM_TRANSLATE_DELTA, 0.f, 0.f));
 			break;
 		case GLUT_KEY_DOWN:
-			camera.Translate(Vec(0.f, -0.05f, 0.f));
+			camera.Translate(Vec(0.f, -CAM_TRANSLATE_DELTA, 0.f));
 			break;
 		case GLUT_KEY_LEFT:
-			camera.Translate(Vec(-0.05f, 0.f, 0.f));
+			camera.Translate(Vec(-CAM_TRANSLATE_DELTA, 0.f, 0.f));
 			break;
 	}
 }

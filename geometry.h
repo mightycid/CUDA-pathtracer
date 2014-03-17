@@ -22,13 +22,13 @@
 
 struct Vec {
 	inline CUDA_HOST_DEVICE Vec() { x = y = z = 0.f; }
-	inline CUDA_HOST_DEVICE Vec(float x_, float y_=0.f, float z_=0.f) 
+	inline CUDA_HOST_DEVICE Vec(float x_, float y_=0.f, float z_=0.f)
 		: x(x_), y(y_), z(z_) { assert(!HasNaNs()); }
-	inline CUDA_HOST_DEVICE Vec(const Vec &v) : x(v.x), y(v.y), z(v.z) { 
-		assert(!HasNaNs()); 
+	inline CUDA_HOST_DEVICE Vec(const Vec &v) : x(v.x), y(v.y), z(v.z) {
+		assert(!HasNaNs());
 	}
 
-	inline CUDA_HOST_DEVICE bool HasNaNs() const { 
+	inline CUDA_HOST_DEVICE bool HasNaNs() const {
 #ifndef __CUDA_ARCH__
 		return isnan(x) || isnan(y) || isnan(z);
 #else
@@ -56,7 +56,7 @@ struct Vec {
 	inline CUDA_HOST_DEVICE float Length() const {
 		return sqrtf(x*x + y*y + z*z);
 	}
-	inline CUDA_HOST_DEVICE float LengthSquared() const { 
+	inline CUDA_HOST_DEVICE float LengthSquared() const {
 		return x*x + y*y + z*z;
 	}
 	inline CUDA_HOST_DEVICE Vec Normalize() const;
@@ -261,11 +261,122 @@ inline CUDA_HOST_DEVICE float Point::DistanceSquared(const Point &p) const {
 	return (*this - p).LengthSquared();
 }
 
+struct Matrix {
+    Matrix() {
+        m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.f;
+        m[0][1] = m[0][2] = m[0][3] = m[1][0] =
+		m[1][2] = m[1][3] = m[2][0] = m[2][1] = 
+		m[2][3] = m[3][0] = m[3][1] = m[3][2] = 0.f;
+    }
+    Matrix(float mat[4][4]) {
+		memcpy(m, mat, 16*sizeof(float));
+	}
+    Matrix(float v00, float v01, float v02, float v03,
+			float v10, float v11, float v12, float v13,
+			float v20, float v21, float v22, float v23,
+			float v30, float v31, float v32, float v33) {
+		m[0][0] = v00; m[0][1] = v01; m[0][2] = v02; m[0][3] = v03;
+		m[1][0] = v10; m[1][1] = v11; m[1][2] = v12; m[1][3] = v03;
+		m[2][0] = v20; m[2][1] = v21; m[2][2] = v22; m[2][3] = v03;
+		m[3][0] = v30; m[3][1] = v31; m[3][2] = v32; m[3][3] = v33;
+	}
+    bool operator==(const Matrix &m2) const {
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                if (m[i][j] != m2.m[i][j]) return false;
+        return true;
+    }
+    bool operator!=(const Matrix &m2) const {
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                if (m[i][j] != m2.m[i][j]) return true;
+        return false;
+    }
+    Matrix Transpose() const;
+    Matrix operator*(const Matrix &mat) const {
+        Matrix r;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                r.m[i][j] = m[i][0] * mat.m[0][j] +
+                            m[i][1] * mat.m[1][j] +
+                            m[i][2] * mat.m[2][j] +
+                            m[i][3] * mat.m[3][j];
+        return r;
+    }
+    Matrix Inverse() const {
+		int indxc[4], indxr[4];
+		int ipiv[4] = { 0, 0, 0, 0 };
+		float minv[4][4];
+		memcpy(minv, m, 4*4*sizeof(float));
+
+		for (int i = 0; i < 4; i++) {
+			int irow = -1, icol = -1;
+			float big = 0.;
+
+			// Choose pivot
+			for (int j = 0; j < 4; j++) {
+				if (ipiv[j] != 1) {
+					for (int k = 0; k < 4; k++) {
+						if (ipiv[k] == 0) {
+							if (fabsf(minv[j][k]) >= big) {
+								big = float(fabsf(minv[j][k]));
+								irow = j;
+								icol = k;
+							}
+						}
+						else if (ipiv[k] > 1) {
+							printf("Singular matrix occured!");
+							exit(-1);
+						}
+					}
+				}
+			}
+			++ipiv[icol];
+			// Swap rows _irow_ and _icol_ for pivot
+			if (irow != icol) {
+				for (int k = 0; k < 4; ++k)
+					std::swap(minv[irow][k], minv[icol][k]);
+			}
+			indxr[i] = irow;
+			indxc[i] = icol;
+			if (minv[icol][icol] == 0.) {
+				printf("Singular matrix occured!");
+				exit(-1);
+			}
+
+			// Set $m[icol][icol]$ to one by scaling row _icol_ appropriately
+			float pivinv = 1.f / minv[icol][icol];
+			minv[icol][icol] = 1.f;
+			for (int j = 0; j < 4; j++)
+				minv[icol][j] *= pivinv;
+
+			// Subtract this row from others to zero out their columns
+			for (int j = 0; j < 4; j++) {
+				if (j != icol) {
+					float save = minv[j][icol];
+					minv[j][icol] = 0;
+					for (int k = 0; k < 4; k++)
+						minv[j][k] -= minv[icol][k]*save;
+				}
+			}
+		}
+		// Swap columns to reflect permutation
+		for (int j = 3; j >= 0; j--) {
+			if (indxr[j] != indxc[j]) {
+				for (int k = 0; k < 4; k++)
+					std::swap(minv[k][indxr[j]], minv[k][indxc[j]]);
+			}
+		}
+		return Matrix(minv);
+	}
+
+    float m[4][4];
+};
+
 
 struct Ray {
 	CUDA_HOST_DEVICE Ray() : o(Point()), d(Vec()) {}
 	CUDA_HOST_DEVICE Ray(const Point &o_, const Vec &d_) : o(o_), d(d_) {}
-	CUDA_HOST_DEVICE ~Ray() {}
 	CUDA_HOST_DEVICE Point operator()(float t) const { assert(!isnan(t)); return o + d*t; }
 
 	Point o;
@@ -273,7 +384,6 @@ struct Ray {
 };
 
 struct BBox {
-	// BBox Public Methods
 	CUDA_HOST_DEVICE BBox() {
 		pMin = Point(INF, INF, INF);
 		pMax = Point(-INF, -INF, -INF);
@@ -380,6 +490,7 @@ struct Color {
 	}
 
 	inline CUDA_HOST_DEVICE bool IsBlack() const { return r == 0.f && g == 0.f && b == 0.f; }
+	inline CUDA_HOST_DEVICE float Max() const { return max(r, max(g,b)); }
 	inline CUDA_HOST_DEVICE float Y() const { return r*0.2126f + g*0.7152f + b*0.0722f; }
 
 	float r, g, b;
@@ -410,7 +521,7 @@ inline CUDA_HOST_DEVICE Color& operator/=(Color &c1, const Color &c2) {
 	c1.r /= c2.r; c1.g /= c2.g; c1.b /= c2.b; return c1;
 }
 inline CUDA_HOST_DEVICE Color& operator/=(Color &c, float d) {
-	assert(d != 0.f); const float inc = 1.f / d; return c *= inc;
+	assert(d != 0.f); const float inv = 1.f / d; return c *= inv;
 }
 
 inline CUDA_HOST_DEVICE Color operator+(const Color &c1, const Color &c2) {
@@ -451,6 +562,18 @@ inline CUDA_HOST_DEVICE Color operator/(const Color &c, float d) {
 }
 inline CUDA_HOST_DEVICE Color operator/(float d, const Color &c) {
 	assert(d != 0.f); const float inv = 1.f / d; return c*inv;
+}
+
+inline CUDA_DEVICE void CoordinateSystem(const Vec &v1, Vec *v2, Vec *v3) {
+    if (fabsf(v1.x) > fabsf(v1.y)) {
+        float invLen = 1.f / sqrtf(v1.x*v1.x + v1.z*v1.z);
+        *v2 = Vec(-v1.z * invLen, 0.f, v1.x * invLen);
+    }
+    else {
+        float invLen = 1.f / sqrtf(v1.y*v1.y + v1.z*v1.z);
+        *v2 = Vec(0.f, v1.z * invLen, -v1.y * invLen);
+    }
+    *v3 = v1.Cross(*v2);
 }
 
 #endif /* __VECMATH_H__ */

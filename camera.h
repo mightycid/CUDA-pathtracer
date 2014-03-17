@@ -22,12 +22,6 @@
 
 #include "globals.h"
 
-struct CameraSample {
-	CUDA_DEVICE CameraSample() : u(0.f), v(0.f) {}
-	CUDA_DEVICE CameraSample(float u_, float v_) : u(u_-0.5f), v(v_-0.5f) {}
-	const float u, v;
-};
-
 class Camera {
 public:
 	Camera() {}
@@ -56,7 +50,7 @@ public:
 	}
 	~Camera() {}
 
-	CUDA_DEVICE Ray GenerateRay(int x, int y, const CameraSample &sample = CameraSample()) const {
+	CUDA_DEVICE Ray GenerateRay(int x, int y, const UVSample &sample = UVSample()) const {
 		//TODO depth of field
 		return Ray(pos, (firstRayDir - v * ((float)y + sample.v) + u * ((float)x + sample.u)).Normalize());
 	}

@@ -20,42 +20,69 @@
 #ifndef __PRIMITIVE_H__
 #define __PRIMITIVE_H__
 
+#include <stdlib.h>
+
 /**
  * Represents a sphere - will be changed to triangle later
  */
 class Primitive {
 public:
-	Primitive(const Point &p, float rad, uint32_t matId) : pos(p),  materialId(matId), radius(rad) {}
+	Primitive(const Point &p, float rad, uint32_t matId) : pos(p),  materialId(matId), radius(rad), lightId(-1) {}
+	Primitive(const Point &p, float rad, uint32_t matId, int lightId) : pos(p),  materialId(matId), radius(rad), lightId(lightId) {}
 
-	CUDA_DEVICE float Intersect(const Ray &ray, float tmin, float tmax) const {
+	CUDA_DEVICE float Intersect(const Ray &ray, float tmin=EPSILON, float tmax=INF) const {
 		Vec op = (pos-ray.o);
 		float t, b=op.Dot(ray.d), det=b*b-op.Dot(op)+radius*radius;
 		if(det<0.f) return -1.f; else det=sqrtf(det);
-		//t = (t=b-det)>tmin ? t : ((t=b+det)>tmin ? t : -1.f);
 		return (t=b-det)>tmin ? (t<tmax ? t : -1.f) : ((t=b+det)>tmin ? (t<tmax ? t : -1.f) : -1.f);
 	}
 	CUDA_DEVICE bool IntersectP(const Ray &ray, float tmin, float tmax) const {
 		//TODO maybe there is a faster hit test for spheres :(
 		return Intersect(ray, tmin, tmax) > 0.f;
 	}
+	CUDA_DEVICE Point Sample(const UVSample &sample, Vec *ns) const {
+		Point p = pos + UniformSampleSphere(sample.u, sample.v) * radius;
+		*ns = GetNormal(p);
+		return p;
+	}
+	CUDA_DEVICE Point Sample(const Point &p, const UVSample &sample, Vec *ns) const {
+		Vec wc = (pos - p).Normalize();
+		Vec wcX, wcY;
+		CoordinateSystem(wc, &wcX, &wcY);
+		float dist2 = p.DistanceSquared(pos);
+		if(dist2 - radius*radius < 1e-4f)
+			return Sample(sample, ns);
+		float sinThetaMax2 = radius*radius / dist2;
+		float cosThetaMax = sqrtf(max(0.f, 1.f - sinThetaMax2));
+		float thit;
+		Point ps;
+		Ray r(p, UniformSampleCone(sample.u, sample.v, cosThetaMax, wcX, wcY, wc));
+		if(thit = Intersect(r) > 0.f)
+			thit = (pos-p).Dot(r.d.Normalize());
+		ps = r(thit);
+		*ns = (ps-pos).Normalize();
+		return ps;
+	}
 	CUDA_DEVICE Vec GetNormal(const Point &p) const { return (p-pos)/radius; }
-	CUDA_DEVICE uint32_t GetMaterialId() const { return materialId; }
+	CUDA_DEVICE bool IsLight() const { return (lightId > -1); }
 
-private:
 	Point pos;
 	uint32_t materialId;
 	float radius;
+	int lightId;
 };
 
 /**
  * Provides a list of primitives on the device memory
  */
 struct PrimitiveList {
-	PrimitiveList() : prims(NULL), size(0) {}
-	PrimitiveList(Primitive* p, uint32_t s) : prims(p), size(s) {}
-	CUDA_DEVICE Primitive& operator[] (uint32_t index) const { return prims[index]; }
+	PrimitiveList(Primitive* p, uint32_t s) : primitives(p), size(s) {}
 
-	Primitive* prims;
+	CUDA_DEVICE Primitive* operator[] (uint32_t index) const {
+		return &primitives[index];
+	}
+
+	Primitive* primitives;
 	uint32_t size;
 };
 

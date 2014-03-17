@@ -31,33 +31,34 @@ struct VisibilityTester  {
 	float mint, maxt;
 };
 
+enum LightType { POINT_LIGHT, AREA_LIGHT };
+
 class Light {
 public:
-	Light(const Point &p, const Color &l) : pos(p), L(l) {}
-	CUDA_DEVICE Ray ShadowRay(const Point &p, float *dist) const {
-		Vec dir = pos-p;
-		dir /= (*dist = dir.Length());
-		return Ray(p, dir);
-	}
-	CUDA_DEVICE Color SampleL(const Point &p, Vec *wi, float *pdf, VisibilityTester *vt) const {
-		*wi = (pos-p).Normalize();
-		*pdf = 1.f;
-		vt->SetSegment(p, EPSILON, pos, 0);
-		return L/pos.DistanceSquared(p);
+	Light(const Point &p, const Color &l)
+		: type(POINT_LIGHT), pos(p), intensity(l) {}
+	Light(uint32_t pId, const Color &l)
+		: type(AREA_LIGHT), primId(pId), intensity(l) {}
+
+	CUDA_DEVICE Color L(const Point &p, const Vec &w, const Vec &n) const {
+		return n.Dot(-w) > 0.f ? intensity : Color();
 	}
 
-private:
-	Point pos;
-	Color L;
+	LightType type;
+	union {
+		struct { Point pos; };
+		struct { uint32_t primId; };
+	};
+	Color intensity;
 };
 
 /**
  * Provides a list of lights on the device memory
  */
 struct LightList {
-	LightList() : lights(NULL), size(0) {}
 	LightList(Light* l, uint32_t s) : lights(l), size(s) {}
-	CUDA_DEVICE Light& operator[] (uint32_t index) const { return lights[index]; }
+
+	CUDA_DEVICE Light* operator[] (uint32_t index) const { return &lights[index]; }
 
 	Light* lights;
 	uint32_t size;

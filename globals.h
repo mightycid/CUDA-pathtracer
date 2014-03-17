@@ -45,7 +45,7 @@
 #define INV_PI     0.31830988618379067154f
 #define INV_TWOPI  0.15915494309189533577f
 #define INV_FOURPI 0.07957747154594766788f
-#define EPSILON 5E-2f
+#define EPSILON 8E-2f
 #define SAMPLES_PER_PIXEL 4*2
 
 #ifdef __CUDACPP__
@@ -74,6 +74,8 @@ class Light;
 class Scene;
 class Pathtracer;
 
+struct Intersection;
+
 inline CUDA_HOST_DEVICE float Radians(float deg) {
     return ((float)M_PI/180.f) * deg;
 }
@@ -82,13 +84,17 @@ inline CUDA_HOST_DEVICE float Degrees(float rad) {
     return (180.f*(float)INV_PI) * rad;
 }
 
+inline CUDA_HOST_DEVICE float Lerp(float t, float v1, float v2) {
+    return (1.f - t) * v1 + t * v2;
+}
+
 inline CUDA_DEVICE Vec Reflect(const Vec &wo, const Vec &n) {
 	return wo - 2.f * wo.Dot(n) * n;
 }
 
 inline CUDA_DEVICE Vec Refract(const Vec &wo, const Vec &n, float eta) {
 	float cost = wo.Dot(n);
-	float cos2t = 1 - eta*eta * (1 - cost * cost);
+	float cos2t = 1.f - eta*eta * (1.f - cost * cost);
 	return (wo * eta - (eta * cost + sqrtf(cos2t)) * n).Normalize();
 }
 
@@ -103,14 +109,10 @@ inline CUDA_DEVICE float reflectance(const Vec &inc, const Vec &nor, const float
     return (rOrth*rOrth+rPar*rPar) / 2.0f;
 }
 
-struct Intersection {
-	CUDA_DEVICE Intersection() : prim(NULL), mat(NULL), p(Point()), n(Vec()), t(0.f) {}
-
-	Primitive *prim;
-	Material *mat;
-	Point p;
-	Vec n;
-	float t;
+struct UVSample {
+	CUDA_DEVICE UVSample() : u(0.f), v(0.f) {}
+	CUDA_DEVICE UVSample(float u_, float v_) : u(u_), v(v_) {}
+	float u, v;
 };
 
 #endif /* __GLOBALS_H__ */

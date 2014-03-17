@@ -17,6 +17,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>. 
  */
 
+#include "scene.h"
+
 #if defined(_WIN32) || defined(_WIN64)
 #  define WINDOWS_LEAN_AND_MEAN
 #  define NOMINMAX
@@ -49,6 +51,7 @@ private:
 	Camera *camera;			//camera instance
 	Scene *scene;			//pointer to scene object on GPU
 	float *devRand;			//pointer to random numbers on GPU
+	float *accum;			//pointer to accumulative buffer on GPU
 	Ray *rayPool;			//pointer to ray pool
 	uint32_t iteration;		//current sample iteration on GPU
 
