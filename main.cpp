@@ -32,6 +32,7 @@ void RunPathtracer();
 void ReleasePathtracer();
 
 void Display();
+void Idle();
 void Keyboard(unsigned char key, int /*x*/, int /*y*/);
 void PressKey(int key, int /*x*/, int /*y*/);
 void GetFPS();
@@ -55,7 +56,7 @@ bool InitGL(int argc, char** argv) {
     glutInitWindowSize(width, height);
     glutCreateWindow("Pathtracer");
     glutDisplayFunc(Display);
-	glutIdleFunc(Display);
+	glutIdleFunc(Idle);
     glutKeyboardFunc(Keyboard);
 	//TODO mouse camera movement
     //glutMotionFunc(motion);
@@ -220,6 +221,10 @@ void Display() {
 
 	glutSwapBuffers();
 	GetFPS();
+}
+
+void Idle() {
+	glutPostRedisplay();
 }
 
 void Keyboard(unsigned char key, int /*x*/, int /*y*/) {

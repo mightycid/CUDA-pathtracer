@@ -68,8 +68,8 @@ struct Intersection {
 *
 * @return true if ray hit an object
 */
-inline CUDA_DEVICE bool Intersect(const Scene *scene, const Ray &ray, Intersection *isect, 
-		float tmin=EPSILON, float tmax=INF) {
+inline CUDA_DEVICE bool Intersect(const Scene *scene, const Ray &ray, 
+		Intersection *isect=NULL, float tmin=EPSILON, float tmax=INF) {
 	Intersection is;
 	bool found = false;
 	for(uint32_t i=0; i<scene->primitives.size; ++i) {
@@ -80,14 +80,16 @@ inline CUDA_DEVICE bool Intersect(const Scene *scene, const Ray &ray, Intersecti
 			tmax = thit;
 			found = true;
 
-			is.prim = prim;
-			is.mat = scene->materials[matId];
-			is.p = ray(thit);
-			is.n = prim->GetNormal(is.p);
-			is.t = thit;
+			if(isect) {
+				is.prim = prim;
+				is.mat = scene->materials[matId];
+				is.p = ray(thit);
+				is.n = prim->Normal(is.p);
+				is.t = thit;
+			}
 		}
 	}
-	*isect = is;
+	if(isect) *isect = is;
 	return found;
 }
 
@@ -105,11 +107,21 @@ inline CUDA_DEVICE bool IntersectP(const Scene *scene, const Ray &ray, float tmi
 	return false;
 }
 
-inline CUDA_DEVICE float Pdf(const Primitive *prim, const Point &p, const Vec &wi) {
+inline CUDA_DEVICE float Pdf(const Scene *scene, const Primitive *prim, 
+		const Point &p, const Vec &wi) {
 	float rad = prim->radius;
 	// Return uniform weight if point inside sphere
-	//if (p.DistanceSquared(prim->pos) - rad*rad < 1e-4f)
-	//	return prim->Pdf(p, wi);
+	if (p.DistanceSquared(prim->pos) - rad*rad < 1e-4f) {
+		Ray ray(p, wi);
+		float thit;
+		if ((thit = Intersect(scene, ray)) < 0.f) return 0.;
+		Vec n = prim->Normal(p);
+
+		float pdf = p.DistanceSquared(ray(thit)) /
+					(fabsf(n.Dot(-wi)) * prim->Area());
+		if (isinf(pdf)) pdf = 0.f;
+		return pdf;
+	}
 
 	// Compute general sphere weight
 	float sinThetaMax2 = rad*rad / p.DistanceSquared(prim->pos);
@@ -117,6 +129,10 @@ inline CUDA_DEVICE float Pdf(const Primitive *prim, const Point &p, const Vec &w
 	return UniformConePdf(cosThetaMax);
 }
 
+/**
+ * Calculates the probability density function on a material coming from
+ * direction wo and exiting in direction wi
+ */
 inline CUDA_DEVICE float Pdf(const Material *mat, const Vec &wo, const Vec &wi,
 		const Vec &n) {
 	if(mat->type == DIFFUSE) {
@@ -127,6 +143,10 @@ inline CUDA_DEVICE float Pdf(const Material *mat, const Vec &wo, const Vec &wi,
 	}
 }
 
+/**
+ * Sample a light source and providing a visibility tester which can be used
+ * to check its occlusion
+ */
 inline CUDA_DEVICE Color SampleLight(const Light *light, const Point &p, Vec *wi,
 		float *pdf, VisibilityTester *vt, const UVSample &sample, 
 		const Scene *scene) {
@@ -141,9 +161,8 @@ inline CUDA_DEVICE Color SampleLight(const Light *light, const Point &p, Vec *wi
 		Vec n;
 		const Primitive *prim = scene->primitives[light->primId];
 		Point sp = prim->Sample(p, sample, &n);
-		//printf("%f, %f, %f\n", sp.x, sp.y, sp.z);
 		*wi = (sp-p).Normalize();
-		*pdf = Pdf(prim, p, *wi);
+		*pdf = Pdf(scene, prim, p, *wi);
 		vt->SetSegment(p, EPSILON, sp, EPSILON);
 		return light->L(p, -*wi, n);
 	}
@@ -192,71 +211,13 @@ inline CUDA_DEVICE Color SampleMaterial(const Material *mat, const Vec &wo, Vec 
 		float refl = reflectance(wo, nnor, n1, n2);
 		if (sample.u < refl) {
 			*wi = Reflect(wo, nnor);
-			f = refl*mat->color;
 		} else {
 			*wi = Refract(wo, nnor, n1/n2);
-			f = (1.f-refl)*mat->color; 
 		}
+		f = mat->color;
 		*pdf = 1.f;
 	}
 	return f;
-}
-
-/**
-* Estimate direct lighting
-*
-* @return Color contribution
-*/
-inline CUDA_DEVICE Color EstimateDirect(const Light *light, const Vec &wo, 
-		const Intersection &isect, const UVSample &sample, const Scene *scene) {
-	Color Ld;
-	Vec wi;
-	float lightPdf, bsdfPdf;
-	VisibilityTester vt;
-	const Point &p = isect.p;
-
-	// get light sample
-	const Color Li = SampleLight(light, isect.p, &wi, &lightPdf, &vt, sample, scene);
-
-	const Material *mat = isect.mat;
-	const Vec &n = isect.n;
-	if (lightPdf > 0.f && !Li.IsBlack()) {
-		Color f = mat->F(wo, wi, n);
-		Ray &lightRay = vt.r;
-		if (!f.IsBlack() && !IntersectP(scene, lightRay, vt.mint, vt.maxt)) {
-			if (light->type == POINT_LIGHT)
-				Ld += f * Li * (fabsf(wi.Dot(n)) / lightPdf);
-			else {
-				bsdfPdf = Pdf(mat, wo, wi, n);
-				float weight = PowerHeuristic(1.f, lightPdf, 1.f, bsdfPdf);
-				Ld += f * Li * (fabsf(wi.Dot(n)) * weight / lightPdf);
-			}
-		}
-	}
-
-	if(light->type == AREA_LIGHT) {
-		Color f = SampleMaterial(mat, wo, &wi, &bsdfPdf, n, sample);
-		if(!f.IsBlack() && bsdfPdf > 0.f) {
-			float weight = 1.f;
-			if(mat->type == DIFFUSE) {
-				lightPdf = Pdf(scene->primitives[light->primId], p, wi);
-				if(lightPdf == 0.f)
-					return Ld;
-				weight = PowerHeuristic(1, bsdfPdf, 1, lightPdf);
-			}
-
-			Intersection lightIsect;
-			Color Li;
-			Ray ray(p, wi);
-			if(Intersect(scene, ray, &lightIsect) > 0.f) {
-				if(lightIsect.prim == scene->primitives[light->primId]) {
-					Li = lightIsect.Le(-wi, scene);
-					Ld += f * Li * fabsf(wi.Dot(n)) * weight / bsdfPdf;
-				}
-			}
-		}
-	}
-	return Ld;
 }
 
 #endif /* __SCENE_H__ */

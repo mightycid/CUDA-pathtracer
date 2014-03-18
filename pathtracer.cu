@@ -22,7 +22,6 @@
 
 #include <device_launch_parameters.h>
 #include <cuda.h>
-#include <curand.h>
 #include <vector>
 #include <time.h>
 
@@ -35,17 +34,17 @@ struct CameraSamples {
 	CUDA_DEVICE CameraSamples(float *s) : samples(s) {
 		//TODO elegant way to do this
 		// upper left
-		samples[0] *= -0.25f;
-		samples[1] *= -0.25f;
+		samples[0] *= -0.5f;
+		samples[1] *= -0.5f;
 		// upper right
-		samples[2] *= 0.25f;
-		samples[3] *= -0.25f;
+		samples[2] *= 0.5f;
+		samples[3] *= -0.5f;
 		// lower left
-		samples[4] *= -0.25f;
-		samples[5] *= 0.25f;
+		samples[4] *= -0.5f;
+		samples[5] *= 0.5f;
 		// lower right
-		samples[6] *= 0.25f;
-		samples[7] *= 0.25f;
+		samples[6] *= 0.5f;
+		samples[7] *= 0.5f;
 	}
 	CUDA_DEVICE UVSample operator[](uint32_t index) const {
 		return UVSample(samples[index*2], samples[index*2+1]);
@@ -71,8 +70,9 @@ __global__ void GenerateRayPool(Camera camera, Ray *rayBuffer, float *devRand) {
 		rayBuffer[index*4+i] = camera.GenerateRay(x, y, samples[i]);
 }
 
-__global__ void RenderKernel(const Scene *scene, float *accum, float *rng,
-		Ray *rayPool, uint32_t width, uint32_t height, int maxBounces) {
+__global__ void RenderKernel(const Scene *scene, float *buffer, 
+		float *rng, Ray *rayPool, uint32_t width, uint32_t height, 
+		uint32_t iteration, int maxBounces) {
 	const uint32_t x = threadIdx.x + blockIdx.x * blockDim.x;
 	const uint32_t y = threadIdx.y + blockIdx.y * blockDim.y;
 	const uint32_t index = (y*width+x);
@@ -82,7 +82,7 @@ __global__ void RenderKernel(const Scene *scene, float *accum, float *rng,
 	if(x >= width || y >= height)
 		return;
 
-	int rngOffset = index*maxBounces*5;
+	int rngOffset = index*maxBounces*SAMPLES_PER_BOUNCE;
 
 	Color c;
 	// 2x2 Subsampling
@@ -92,28 +92,15 @@ __global__ void RenderKernel(const Scene *scene, float *accum, float *rng,
 	}
 	c /= 4.f;
 
-	accum[fbindex]   += c.r;
-	accum[fbindex+1] += c.g;
-	accum[fbindex+2] += c.b;
-}
-
-__global__ void AccumulateColor(float *buffer, const float *accum,
-		uint32_t width, uint32_t height, uint32_t iteration) {
-
-	const uint32_t x = threadIdx.x + blockIdx.x * blockDim.x;
-	const uint32_t y = threadIdx.y + blockIdx.y * blockDim.y;
-	const uint32_t fbindex = (y*width+x)*3;
-
-		// leave thread if out of bounds
-	if(x >= width || y >= height)
-		return;
-
-	float gamma = 2.2f;
-	float invIteration = 1.f/(float)iteration;
-
-	buffer[fbindex]   = GAMMA_FLOAT(accum[fbindex  ]*invIteration, gamma);
-	buffer[fbindex+1] = GAMMA_FLOAT(accum[fbindex+1]*invIteration, gamma);
-	buffer[fbindex+2] = GAMMA_FLOAT(accum[fbindex+2]*invIteration, gamma);
+	float gamma = 1.0f;
+	float invIteration = 1.f/(float)(iteration);
+	
+	buffer[fbindex]   = (buffer[fbindex]   * (float)(iteration-1)
+		+ c.r) * invIteration;
+	buffer[fbindex+1] = (buffer[fbindex+1] * (float)(iteration-1)
+		+ c.g) * invIteration;
+	buffer[fbindex+2] = (buffer[fbindex+2] * (float)(iteration-1)
+		+ c.b) * invIteration;
 }
 
 __device__ Color Trace(const Ray &r, const Scene *scene, float* rng, 
@@ -135,28 +122,17 @@ __device__ Color Trace(const Ray &r, const Scene *scene, float* rng,
 		const Point &p = isectp.p;
 		const Vec &n = isectp.n;
 		const Vec wo = ray.d;
-		const int rngIndex = bounces*5;
+		const int rngIndex = bounces*SAMPLES_PER_BOUNCE;
 
 		//if ((bounces == 0 || specularBounce) && prim->IsLight()) {
 		if (prim->IsLight()) {
 			Light *light = scene->lights[prim->lightId];
 			L += pathThroughput * light->L(p, wo, n);
 		}
-
-		float lightPdf = 1.f;
-		//TODO chose light depend on power heuristic
-		uint32_t lightNum = (uint32_t)(rng[rngIndex+1]*(float)scene->lights.size);
-		const Light *light = scene->lights[lightNum];
-
-		UVSample lightSample(rng[rngIndex+1], rng[rngIndex+2]);
-
-		// get direct lighting
-		L += pathThroughput * EstimateDirect(light, wo, isectp, lightSample,
-			scene) / lightPdf;
 		
 		Vec wi;
 		float pdf;
-		UVSample bsdfSample = UVSample(rng[rngIndex+3], rng[rngIndex+4]);
+		UVSample bsdfSample = UVSample(rng[rngIndex], rng[rngIndex+1]);
 		// get reflected sample
 		const Color f = SampleMaterial(mat, wo, &wi, &pdf, isectp.n, bsdfSample);
 
@@ -170,7 +146,7 @@ __device__ Color Trace(const Ray &r, const Scene *scene, float* rng,
 		// russian roulette
 		if (bounces > 3) {
 			float continueProbability = min(.5f, pathThroughput.Max());
-			float rnd = rng[rngIndex+5];
+			float rnd = rng[rngIndex+2];
 			if (rnd > continueProbability)
 				break;
 			pathThroughput /= continueProbability;
@@ -215,11 +191,6 @@ bool Pathtracer::Init(const std::vector<Material> &mv,
 		cudaMemcpyHostToDevice));
 	MaterialList matList = MaterialList(devMats, numMats);
 
-	//allocate memory for accumulative buffer
-	size_t accumSize = width*height*3*sizeof(float);
-	CudaSafeCall(cudaMalloc((void**)&(accum), accumSize));
-	CudaSafeCall(cudaMemset(accum, 0, accumSize));
-
 	//copy scene to device
 	Scene hostScene (matList, primList, lightList);
 	CudaSafeCall(cudaMalloc((void**)&(scene), sizeof(Scene)));
@@ -227,7 +198,7 @@ bool Pathtracer::Init(const std::vector<Material> &mv,
 		cudaMemcpyHostToDevice));
 
 	//allocate memory for random numbers
-	sampleSize = width*height*SAMPLES_PER_PIXEL*maxBounces*5;
+	sampleSize = width*height*SAMPLES_PER_PIXEL*maxBounces*SAMPLES_PER_BOUNCE;
 	CudaSafeCall(cudaMalloc((void**)&(devRand), sampleSize*sizeof(float)));
 
 	//allocate memory for ray pool
@@ -235,16 +206,16 @@ bool Pathtracer::Init(const std::vector<Material> &mv,
 	size_t numRays = width*height*4;
 	CudaSafeCall(cudaMalloc((void**)&(rayPool), numRays*sizeof(Ray)));
 
+	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+	curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+	CudaCheckError();
+
 	return true;
 }
 
 void Pathtracer::Run(float* devBuffer) {
 	// create random numbers
-	curandGenerator_t gen;
-	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
 	curandGenerateUniform(gen, devRand, sampleSize);
-	curandDestroyGenerator(gen);
 	CudaCheckError();
 
 	int dimx = 16;
@@ -258,10 +229,8 @@ void Pathtracer::Run(float* devBuffer) {
 
 	//launch kernel
 	uint32_t randOffset = width*height*SAMPLES_PER_PIXEL;
-	RenderKernel<<<dimGrid, dimBlock>>>(scene, accum, &devRand[randOffset],
-		rayPool, width, height, maxBounces);
-
-	AccumulateColor<<<dimGrid, dimBlock>>>(devBuffer, accum, width, height, ++iteration);
+	RenderKernel<<<dimGrid, dimBlock>>>(scene, devBuffer, &devRand[randOffset],
+		rayPool, width, height, ++iteration, maxBounces);
 
 	cudaThreadSynchronize();
 	CudaCheckError();
@@ -273,11 +242,11 @@ void Pathtracer::Reset() {
 
 void Pathtracer::Release() {
 	//release buffers
+	curandDestroyGenerator(gen);
 	cudaFree(devRand);
 	cudaFree(rayPool);
-	cudaFree(accum);
 	cudaFree(scene->lights.lights);
 	cudaFree(scene->materials.materials);
 	cudaFree(scene->primitives.primitives);
-
+	cudaFree(scene);
 }

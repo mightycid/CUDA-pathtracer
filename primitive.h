@@ -42,7 +42,7 @@ public:
 	}
 	CUDA_DEVICE Point Sample(const UVSample &sample, Vec *ns) const {
 		Point p = pos + UniformSampleSphere(sample.u, sample.v) * radius;
-		*ns = GetNormal(p);
+		*ns = Normal(p);
 		return p;
 	}
 	CUDA_DEVICE Point Sample(const Point &p, const UVSample &sample, Vec *ns) const {
@@ -63,7 +63,8 @@ public:
 		*ns = (ps-pos).Normalize();
 		return ps;
 	}
-	CUDA_DEVICE Vec GetNormal(const Point &p) const { return (p-pos)/radius; }
+	CUDA_DEVICE float Area() const { return 4 * M_PI * radius * radius; }
+	CUDA_DEVICE Vec Normal(const Point &p) const { return (p-pos)/radius; }
 	CUDA_DEVICE bool IsLight() const { return (lightId > -1); }
 
 	Point pos;

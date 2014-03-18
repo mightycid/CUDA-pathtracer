@@ -47,6 +47,7 @@
 #define INV_FOURPI 0.07957747154594766788f
 #define EPSILON 8E-2f
 #define SAMPLES_PER_PIXEL 4*2
+#define SAMPLES_PER_BOUNCE 3
 
 #ifdef __CUDACPP__
 #  define INF 0x7f800000
@@ -54,7 +55,10 @@
 #  define INF FLT_MAX
 #endif
 
+#ifdef _MSC_VER
 #define isnan(f) _isnan(f)
+#define isinf(f) ((f)!=(f))
+#endif
 #define min(a, b) (a < b ? a : b)
 #define max(a, b) (a > b ? a : b)
 
