@@ -56,20 +56,25 @@ struct CameraSamples {
 __device__ Color Trace(const Ray &ray, const Scene *scene, float* rng,
 	int maxBounces=10);
 
+/**
+ * kernel to generate a ray pool
+ */
 __global__ void GenerateRayPool(Camera camera, Ray *rayBuffer, float *devRand) {
 	const uint32_t x = threadIdx.x + blockIdx.x * blockDim.x;
 	const uint32_t y = threadIdx.y + blockIdx.y * blockDim.y;
 	const uint32_t index = (y*camera.Width()+x);
 
-	if(x >= camera.Width() || y >= camera.Height()) {
+	if(x >= camera.Width() || y >= camera.Height())
 		return;
-	}
 	
 	CameraSamples samples(&devRand[index*4*2]);
 	for(int i=0; i<4; ++i)
 		rayBuffer[index*4+i] = camera.GenerateRay(x, y, samples[i]);
 }
 
+/**
+ * kernel to render one iteration of the image
+ */
 __global__ void RenderKernel(const Scene *scene, float *buffer, 
 		float *rng, Ray *rayPool, uint32_t width, uint32_t height, 
 		uint32_t iteration, int maxBounces) {
@@ -92,15 +97,13 @@ __global__ void RenderKernel(const Scene *scene, float *buffer,
 	}
 	c /= 4.f;
 
-	float gamma = 1.0f;
+	//float gamma = 1.2f;
 	float invIteration = 1.f/(float)(iteration);
 	
-	buffer[fbindex]   = (buffer[fbindex]   * (float)(iteration-1)
-		+ c.r) * invIteration;
-	buffer[fbindex+1] = (buffer[fbindex+1] * (float)(iteration-1)
-		+ c.g) * invIteration;
-	buffer[fbindex+2] = (buffer[fbindex+2] * (float)(iteration-1)
-		+ c.b) * invIteration;
+	// accumulate color ((old*(n-1)+new)/n)
+	buffer[fbindex]   = (buffer[fbindex]  *(float)(iteration-1) + c.r)*invIteration;
+	buffer[fbindex+1] = (buffer[fbindex+1]*(float)(iteration-1) + c.g)*invIteration;
+	buffer[fbindex+2] = (buffer[fbindex+2]*(float)(iteration-1) + c.b)*invIteration;
 }
 
 __device__ Color Trace(const Ray &r, const Scene *scene, float* rng, 
@@ -108,7 +111,7 @@ __device__ Color Trace(const Ray &r, const Scene *scene, float* rng,
 	Color pathThroughput(1.f,1.f,1.f), L;
 
 	Ray ray = r;
-	bool specularBounce = false;
+	//bool specularBounce = false;
 	Intersection isect;
 
 	if(!Intersect(scene, ray, &isect))
@@ -139,7 +142,7 @@ __device__ Color Trace(const Ray &r, const Scene *scene, float* rng,
 		// leave if current sample gives no contribution
 		if (f.IsBlack() || pdf == 0.f) break;
 
-		specularBounce = (mat->type == SPECULAR || mat->type == TRANSMISSIVE);
+		//specularBounce = (mat->type == SPECULAR || mat->type == TRANSMISSIVE);
 		pathThroughput *= f * fabs(wi.Dot(n)) / pdf;
 		ray = Ray(p, wi);
 

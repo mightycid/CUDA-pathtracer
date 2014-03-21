@@ -20,31 +20,26 @@
 #ifndef __VECMATH_H__
 #define __VECMATH_H__
 
+/**
+ * Represents a 3D vector
+ * 4th value for compatibility with matrices.
+ * It isn't used in operations but it is accessible
+ */
 struct Vec {
-	inline CUDA_HOST_DEVICE Vec() { x = y = z = 0.f; }
-	inline CUDA_HOST_DEVICE Vec(float x_, float y_=0.f, float z_=0.f)
-		: x(x_), y(y_), z(z_) { assert(!HasNaNs()); }
-	inline CUDA_HOST_DEVICE Vec(const Vec &v) : x(v.x), y(v.y), z(v.z) {
-		assert(!HasNaNs());
-	}
-
-	inline CUDA_HOST_DEVICE bool HasNaNs() const {
-#ifndef __CUDA_ARCH__
-		return isnan(x) || isnan(y) || isnan(z);
-#else
-		return true;
-#endif
-	}
+	inline CUDA_HOST_DEVICE Vec() { x = y = z = w = 0.f; }
+	inline CUDA_HOST_DEVICE Vec(float x_, float y_=0.f, float z_=0.f, float w_=0.f)
+		: x(x_), y(y_), z(z_), w(w_) { }
+	inline CUDA_HOST_DEVICE Vec(const Vec &v) : x(v.x), y(v.y), z(v.z), w(v.w) { }
 
 	inline CUDA_HOST_DEVICE float operator[](int i) const {
-		assert(i >= 0 && i <= 2); return (&x)[i];
+		assert(i >= 0 && i <= 3); return (&x)[i];
 	}
 	inline CUDA_HOST_DEVICE float& operator[](int i) {
-		assert(i >= 0 && i <= 2); return (&x)[i];
+		assert(i >= 0 && i <= 3); return (&x)[i];
 	}
 
 	inline CUDA_HOST_DEVICE Vec operator-() const {
-		return Vec(-x, -y, -z);
+		return Vec(-x, -y, -z, -w);
 	}
 
 	inline CUDA_HOST_DEVICE Vec Cross(const Vec &v) const {
@@ -59,11 +54,10 @@ struct Vec {
 	inline CUDA_HOST_DEVICE float LengthSquared() const {
 		return x*x + y*y + z*z;
 	}
-	inline CUDA_HOST_DEVICE Vec Normalize() const;
 	inline CUDA_HOST_DEVICE Vec& Normalize();
 	inline CUDA_HOST_DEVICE Vec& Normalize(float *l);
 
-	float x, y, z;
+	float x, y, z, w;
 };
 
 inline CUDA_HOST_DEVICE Vec& operator+=(Vec &v1, const Vec &v2) {
@@ -134,9 +128,6 @@ inline CUDA_HOST_DEVICE Vec operator/(float d, const Vec &v) {
 	assert(d != 0.f); const float inv = 1.f / d; return v*inv;
 }
 
-inline CUDA_HOST_DEVICE Vec Vec::Normalize() const {
-	return *this / Length();
-}
 inline CUDA_HOST_DEVICE Vec& Vec::Normalize() {
 	return *this = *this / Length();
 }
@@ -144,30 +135,23 @@ inline CUDA_HOST_DEVICE Vec& Vec::Normalize(float *l) {
 	*l = Length(); return *this = *this / *l;
 }
 
+/**
+ * Represents a 3D-Point in space
+ */
 struct Point {
-	inline CUDA_HOST_DEVICE Point() { x = y = z = 0.f; assert(!HasNaNs()); }
+	inline CUDA_HOST_DEVICE Point() { x = y = z = 0.f; }
 	inline CUDA_HOST_DEVICE Point(float x_, float y_=0.f, float z_=0.f)
-		: x(x_), y(y_), z(z_) { assert(!HasNaNs()); }
-	inline CUDA_HOST_DEVICE Point(const Point &p) : x(p.x), y(p.y), z(p.z) {
-		assert(!HasNaNs());
-	}
-
-	inline CUDA_HOST_DEVICE bool HasNaNs() const {
-#ifndef __CUDA_ARCH__
-		return isnan(x) || isnan(y) || isnan(z);
-#else
-		return true;
-#endif
-	}
+		: x(x_), y(y_), z(z_) { }
+	inline CUDA_HOST_DEVICE Point(const Point &p) : x(p.x), y(p.y), z(p.z) { }
 
 	inline CUDA_HOST_DEVICE Point& operator=(const Point &p) {
 		x = p.x; y = p.y; z = p.z; return *this;
 	}
 	inline CUDA_HOST_DEVICE float operator[](int i) const {
-		assert(i >= 0 && i <= 2); return (&x)[i];
+		assert(i >= 0 && i <= 3); return (&x)[i];
 	}
 	inline CUDA_HOST_DEVICE float& operator[](int i) {
-		assert(i >= 0 && i <= 2); return (&x)[i];
+		assert(i >= 0 && i <= 3); return (&x)[i];
 	}
 
 	inline CUDA_HOST_DEVICE bool operator==(const Point &p) const {
@@ -190,69 +174,24 @@ struct Point {
 inline CUDA_HOST_DEVICE Point& operator+=(Point &p, const Vec &v) {
 	p.x += v.x; p.y += v.y; p.z += v.z; return p;
 }
-// inline CUDA_HOST_DEVICE Point& operator+=(Point &p, float d) {
-// 	v.x += d; v.y += d; v.z += d; return v;
-// }
 
 inline CUDA_HOST_DEVICE Point& operator-=(Point &p, const Vec &v) {
 	p.x -= v.x; p.y -= v.y; p.z -= v.z; return p;
 }
-// inline CUDA_HOST_DEVICE Point& operator-=(Point &p, float d) {
-// 	v.x -= d; v.y -= d; v.z -= d; return v;
-// }
-
-// inline CUDA_HOST_DEVICE Point& operator*=(Point &p1, const Point &p2) {
-// 	p1.x *= p2.x; p1.y *= p2.y; p1.z *= p2.z; return p1; }
-// inline CUDA_HOST_DEVICE Point& operator*=(Point &p, float d) {
-// 	v.x *= d; v.y *= d; v.z *= d; return v;
-// }
-
-// inline CUDA_HOST_DEVICE Point& operator/=(Point &p1, const Point &p2) {
-// 	p1.x /= p2.x; p1.y /= p2.y; p1.z /= p2.z; return p1;
-// }
-// inline CUDA_HOST_DEVICE Point& operator/=(Point &p, float d) {
-// 	assert(d != 0.f); const float inv = 1.f / d; return v *= inv;
-// }
 
 inline CUDA_HOST_DEVICE Point operator+(const Point &p, const Vec &v) {
 	return Point(p.x + v.x, p.y + v.y, p.z + v.z);
 }
-// inline CUDA_HOST_DEVICE Point operator+(const Point &p, float d) {
-// 	return Point(v.x + d, v.y + d, v.z + d);
-// }
-// inline CUDA_HOST_DEVICE Point operator+(float d, const Point &p) {
-// 	return Point(v.x + d, v.y + d, v.z + d);
-// }
+inline CUDA_HOST_DEVICE Point operator+(const Point &p, float d) {
+	return Point(p.x + d, p.y + d, p.z + d);
+}
 
 inline CUDA_HOST_DEVICE Vec operator-(const Point &p1, const Point &p2) {
 	return Vec(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
 }
-// inline CUDA_HOST_DEVICE Point operator-(const Point &p, float d) {
-// 	return Point(v.x - d, v.y - d, v.z - d);
-// }
-// inline CUDA_HOST_DEVICE Point operator-(float d, const Point &p) {
-// 	return Point(v.x - d, v.y - d, v.z - d);
-// }
-
-// inline CUDA_HOST_DEVICE Point operator*(const Point &p1, const Point &p2) {
-// 	return Point(p1.x*p2.x, p1.y*p2.y, p1.z*p2.z);
-// }
-// inline CUDA_HOST_DEVICE Point operator*(const Point &p, float d) {
-// 	return Point(v.x*d, v.y*d, v.z*d);
-// }
-// inline CUDA_HOST_DEVICE Point operator*(float d, const Point &p) {
-// 	return Point(v.x*d, v.y*d, v.z*d);
-// }
-
-// inline CUDA_HOST_DEVICE Point operator/(const Point &p1, const Point &p2) {
-// 	return Point(p1.x / p2.x, p1.y / p2.y, p1.z / p2.z);
-// }
-// inline CUDA_HOST_DEVICE Point operator/(const Point &p, float d) {
-// 	assert(d != 0.f); const float inv = 1.f / d; return v*inv;
-// }
-// inline CUDA_HOST_DEVICE Point operator/(float d, const Point &p) {
-// 	assert(d != 0.f); const float inv = 1.f / d; return v*inv;
-// }
+inline CUDA_HOST_DEVICE Point operator-(const Point &p, float d) {
+	return Point(p.x - d, p.y - d, p.z - d);
+}
 
 inline CUDA_HOST_DEVICE float Point::Distance(const Point &p) const {
 	return (*this - p).Length();
@@ -261,23 +200,32 @@ inline CUDA_HOST_DEVICE float Point::DistanceSquared(const Point &p) const {
 	return (*this - p).LengthSquared();
 }
 
+/**
+ * Represents a 4x4 matrix
+ */
 struct Matrix {
     Matrix() {
         m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.f;
-        m[0][1] = m[0][2] = m[0][3] = m[1][0] =
+        m[0][1] = m[0][2] = m[0][3] = m[1][0] = 
 		m[1][2] = m[1][3] = m[2][0] = m[2][1] = 
 		m[2][3] = m[3][0] = m[3][1] = m[3][2] = 0.f;
     }
     Matrix(float mat[4][4]) {
 		memcpy(m, mat, 16*sizeof(float));
 	}
+    Matrix(const Vec &v0, const Vec &v1, const Vec &v2, const Vec &v3) {
+		m[0][0] = v0.x; m[0][1] = v0.y; m[0][2] = v0.z; m[0][3] = v0.w;
+		m[1][0] = v1.x; m[1][1] = v1.y; m[1][2] = v1.z; m[1][3] = v1.w;
+		m[2][0] = v2.x; m[2][1] = v2.y; m[2][2] = v2.z; m[2][3] = v2.w;
+		m[3][0] = v3.x; m[3][1] = v3.y; m[3][2] = v3.z; m[3][3] = v3.w;
+	}
     Matrix(float v00, float v01, float v02, float v03,
 			float v10, float v11, float v12, float v13,
 			float v20, float v21, float v22, float v23,
 			float v30, float v31, float v32, float v33) {
 		m[0][0] = v00; m[0][1] = v01; m[0][2] = v02; m[0][3] = v03;
-		m[1][0] = v10; m[1][1] = v11; m[1][2] = v12; m[1][3] = v03;
-		m[2][0] = v20; m[2][1] = v21; m[2][2] = v22; m[2][3] = v03;
+		m[1][0] = v10; m[1][1] = v11; m[1][2] = v12; m[1][3] = v13;
+		m[2][0] = v20; m[2][1] = v21; m[2][2] = v22; m[2][3] = v23;
 		m[3][0] = v30; m[3][1] = v31; m[3][2] = v32; m[3][3] = v33;
 	}
     bool operator==(const Matrix &m2) const {
@@ -292,7 +240,12 @@ struct Matrix {
                 if (m[i][j] != m2.m[i][j]) return true;
         return false;
     }
-    Matrix Transpose() const;
+    Matrix Transpose() const {
+		return Matrix(m[0][0], m[1][0], m[2][0], m[3][0],
+			m[0][1], m[1][1], m[2][1], m[3][1],
+			m[0][2], m[1][2], m[2][2], m[3][2],
+			m[0][3], m[1][3], m[2][3], m[3][3]);
+	}
     Matrix operator*(const Matrix &mat) const {
         Matrix r;
         for (int i = 0; i < 4; ++i)
@@ -369,20 +322,33 @@ struct Matrix {
 		}
 		return Matrix(minv);
 	}
+	Vec GetRow(int row) const {
+		assert(row >= 0 && row <= 3);
+		return Vec(m[row][0], m[row][1], m[row][2], m[row][3]);
+	}
+	Vec GetCol(int col) const {
+		assert(row >= 0 && row <= 3);
+		return Vec(m[0][col], m[1][col], m[2][col], m[3][col]);
+	}
 
     float m[4][4];
 };
 
-
+/**
+ * Represents a ray with origin and direction
+ */
 struct Ray {
 	CUDA_HOST_DEVICE Ray() : o(Point()), d(Vec()) {}
 	CUDA_HOST_DEVICE Ray(const Point &o_, const Vec &d_) : o(o_), d(d_) {}
-	CUDA_HOST_DEVICE Point operator()(float t) const { assert(!isnan(t)); return o + d*t; }
+	CUDA_HOST_DEVICE Point operator()(float t) const { return o + d*t; }
 
 	Point o;
 	Vec d;
 };
 
+/**
+ * Represents an axis aligned bounding box
+ */
 struct BBox {
 	CUDA_HOST_DEVICE BBox() {
 		pMin = Point(INF, INF, INF);
@@ -443,8 +409,8 @@ struct BBox {
 		else
 			return 2;
 	}
-	CUDA_HOST_DEVICE const Point &operator[](int i) const;
-	CUDA_HOST_DEVICE Point &operator[](int i);
+	//CUDA_HOST_DEVICE const Point &operator[](int i) const;
+	//CUDA_HOST_DEVICE Point &operator[](int i);
 	// CUDA_HOST_DEVICE Point Lerp(float tx, float ty, float tz) const {
 	// 	return Point(::Lerp(tx, pMin.x, pMax.x), ::Lerp(ty, pMin.y, pMax.y),
 	// 		::Lerp(tz, pMin.z, pMax.z));
@@ -453,7 +419,29 @@ struct BBox {
 		return Vec((p - pMin) / (pMax - pMin));
 	}
 	CUDA_HOST_DEVICE bool IntersectP(const Ray &ray, float *hitt0 = NULL,
-		float *hitt1 = NULL) const;
+			float *hitt1 = NULL) const {
+		float t0 = EPSILON, t1 = INF;
+		for (int i = 0; i < 3; ++i) {
+			// Update interval for _i_th bounding box slab
+			float invRayDir = 1.f / ray.d[i];
+			float tNear = (pMin[i] - ray.o[i]) * invRayDir;
+			float tFar  = (pMax[i] - ray.o[i]) * invRayDir;
+
+			// Update parametric interval from slab intersection $t$s
+			if (tNear > tFar) {
+				float tmp = tFar;
+				tFar = tNear;
+				tNear = tmp;
+				//std::swap(tNear, tFar);
+			}
+			t0 = tNear > t0 ? tNear : t0;
+			t1 = tFar  < t1 ? tFar  : t1;
+			if (t0 > t1) return false;
+		}
+		if (hitt0) *hitt0 = t0;
+		if (hitt1) *hitt1 = t1;
+		return true;
+	}
 	CUDA_HOST_DEVICE bool operator==(const BBox &b) const {
 		return b.pMin == pMin && b.pMax == pMax;
 	}
@@ -464,23 +452,16 @@ struct BBox {
 	Point pMin, pMax;
 };
 
+/**
+ * Represents a RGB color value
+ */
 struct Color {
 	inline CUDA_HOST_DEVICE Color() { r = g = b = 0.f; }
 	inline CUDA_HOST_DEVICE Color(float r_, float g_=0.f, float b_=0.f) 
-		: r(r_), g(g_), b(b_) { assert(!HasNaNs()); }
-	inline CUDA_HOST_DEVICE Color(const Color &c) : r(c.r), g(c.g), b(c.b) {
-		assert(!HasNaNs());
-	}
+		: r(r_), g(g_), b(b_) { }
+	inline CUDA_HOST_DEVICE Color(const Color &c) : r(c.r), g(c.g), b(c.b) { }
 
 	inline CUDA_HOST_DEVICE Color operator=(float f) { return Color(f, f, f); }
-
-	inline CUDA_HOST_DEVICE bool HasNaNs() const {
-#ifndef __CUDA_ARCH__
-		return isnan(r) || isnan(g) || isnan(b);
-#else
-		return true;
-#endif
-	}
 
 	inline CUDA_HOST_DEVICE float operator[](int i) const {
 		assert(i >= 0 && i <= 2); return (&r)[i];

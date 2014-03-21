@@ -23,8 +23,6 @@
 
 #include <cuda_gl_interop.h>
 
-#define CAM_TRANSLATE_DELTA 0.5f
-
 bool InitGL(int *argc, char** argv);
 void InitPBO();
 bool InitPathtracer();
@@ -232,27 +230,47 @@ void Keyboard(unsigned char key, int /*x*/, int /*y*/) {
         case (27) :
             exit(EXIT_SUCCESS);
             break;
-    }
+        case 'r' :
+            exit(EXIT_SUCCESS);
+            break;
+	}
 }
 
 /**
  * TODO camera movement through keyboard commands
  */
 void PressKey(int key, int /*x*/, int /*y*/) {
-	switch(key) {
-		case GLUT_KEY_UP:
-			camera.Translate(Vec(0.f, CAM_TRANSLATE_DELTA, 0.f));
-			break;
-		case GLUT_KEY_RIGHT:
-			camera.Translate(Vec(CAM_TRANSLATE_DELTA, 0.f, 0.f));
-			break;
-		case GLUT_KEY_DOWN:
-			camera.Translate(Vec(0.f, -CAM_TRANSLATE_DELTA, 0.f));
-			break;
-		case GLUT_KEY_LEFT:
-			camera.Translate(Vec(-CAM_TRANSLATE_DELTA, 0.f, 0.f));
-			break;
-	}
+	if(glutGetModifiers()==GLUT_ACTIVE_CTRL) {
+		switch(key) {
+			case GLUT_KEY_UP:
+				camera.Translate(Vec(0.f, 0.f, CAM_TRANSLATE_DELTA));
+				break;
+			case GLUT_KEY_RIGHT:
+				camera.Translate(Vec(CAM_TRANSLATE_DELTA, 0.f, 0.f));
+				break;
+			case GLUT_KEY_DOWN:
+				camera.Translate(Vec(0.f, 0.f, -CAM_TRANSLATE_DELTA));
+				break;
+			case GLUT_KEY_LEFT:
+				camera.Translate(Vec(-CAM_TRANSLATE_DELTA, 0.f, 0.f));
+				break;
+		}
+	} else {
+		switch(key) {
+			case GLUT_KEY_UP:
+				camera.Rotate(Vec(0.f, CAM_ROTATE_DELTA, 0.f));
+				break;
+			case GLUT_KEY_RIGHT:
+				camera.Rotate(Vec(-CAM_ROTATE_DELTA, 0.f, 0.f));
+				break;
+			case GLUT_KEY_DOWN:
+				camera.Rotate(Vec(0.f, -CAM_ROTATE_DELTA, 0.f));
+				break;
+			case GLUT_KEY_LEFT:
+				camera.Rotate(Vec(CAM_ROTATE_DELTA, 0.f, 0.f));
+				break;
+		}
+}
 }
 
 void GetFPS() {

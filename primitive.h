@@ -27,10 +27,17 @@
  */
 class Primitive {
 public:
-	Primitive(const Point &p, float rad, uint32_t matId) : pos(p),  materialId(matId), radius(rad), lightId(-1) {}
-	Primitive(const Point &p, float rad, uint32_t matId, int lightId) : pos(p),  materialId(matId), radius(rad), lightId(lightId) {}
+	Primitive(const Point &p, float rad, uint32_t matId)
+		: pos(p), materialId(matId), radius(rad), lightId(-1) {
+			bb = BBox(p-rad, p+rad);
+	}
+	Primitive(const Point &p, float rad, uint32_t matId, int lightId)
+		: pos(p),  materialId(matId), radius(rad), lightId(lightId) {
+			bb = BBox(p-rad, p+rad);
+	}
 
 	CUDA_DEVICE float Intersect(const Ray &ray, float tmin=EPSILON, float tmax=INF) const {
+		//if(!bb.IntersectP(ray)) return -1.f;
 		Vec op = (pos-ray.o);
 		float t, b=op.Dot(ray.d), det=b*b-op.Dot(op)+radius*radius;
 		if(det<0.f) return -1.f; else det=sqrtf(det);
@@ -67,6 +74,7 @@ public:
 	CUDA_DEVICE Vec Normal(const Point &p) const { return (p-pos)/radius; }
 	CUDA_DEVICE bool IsLight() const { return (lightId > -1); }
 
+	BBox bb;
 	Point pos;
 	uint32_t materialId;
 	float radius;

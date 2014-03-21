@@ -45,9 +45,13 @@
 #define INV_PI     0.31830988618379067154f
 #define INV_TWOPI  0.15915494309189533577f
 #define INV_FOURPI 0.07957747154594766788f
-#define EPSILON 8E-2f
+
+#define EPSILON 3E-2f
 #define SAMPLES_PER_PIXEL 4*2
 #define SAMPLES_PER_BOUNCE 3
+
+#define CAM_TRANSLATE_DELTA 1.f
+#define CAM_ROTATE_DELTA 0.05f
 
 #ifdef __CUDACPP__
 #  define INF 0x7f800000
@@ -79,6 +83,14 @@ class Scene;
 class Pathtracer;
 
 struct Intersection;
+
+
+struct UVSample {
+	CUDA_DEVICE UVSample() : u(0.f), v(0.f) {}
+	CUDA_DEVICE UVSample(float u_, float v_) : u(u_), v(v_) {}
+	float u, v;
+};
+
 
 inline CUDA_HOST_DEVICE float Radians(float deg) {
     return ((float)M_PI/180.f) * deg;
@@ -112,11 +124,5 @@ inline CUDA_DEVICE float reflectance(const Vec &inc, const Vec &nor, const float
     float rPar = (n2*cosI-n1*cosT) / (n2*cosI+n1*cosT);
     return (rOrth*rOrth+rPar*rPar) / 2.0f;
 }
-
-struct UVSample {
-	CUDA_DEVICE UVSample() : u(0.f), v(0.f) {}
-	CUDA_DEVICE UVSample(float u_, float v_) : u(u_), v(v_) {}
-	float u, v;
-};
 
 #endif /* __GLOBALS_H__ */
