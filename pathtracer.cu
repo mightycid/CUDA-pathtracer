@@ -68,6 +68,8 @@ __global__ void GenerateRayPool(Camera camera, Ray *rayBuffer, float *devRand) {
 		return;
 	
 	CameraSamples samples(&devRand[index*4*2]);
+
+#pragma unroll
 	for(int i=0; i<4; ++i)
 		rayBuffer[index*4+i] = camera.GenerateRay(x, y, samples[i]);
 }
@@ -91,6 +93,7 @@ __global__ void RenderKernel(const Scene *scene, float *buffer,
 
 	Color c;
 	// 2x2 Subsampling
+#pragma unroll
 	for(int i=0; i<4; ++i) {
 		Ray ray = rayPool[index*4+i];
 		c += Trace(ray, scene, &rng[rngOffset], maxBounces);

@@ -23,6 +23,10 @@
 
 #include <cuda_gl_interop.h>
 
+enum MouseMovementType {
+	MOUSE_NONE, MOUSE_ROTATION, MOUSE_TRANSLATION_XY, MOUSE_TRANSLATION_XZ
+};
+
 bool InitGL(int *argc, char** argv);
 void InitPBO();
 bool InitPathtracer();
@@ -33,6 +37,8 @@ void Display();
 void Idle();
 void Keyboard(unsigned char key, int /*x*/, int /*y*/);
 void PressKey(int key, int /*x*/, int /*y*/);
+void Mouse(int button, int state, int x, int y);
+void Motion(int x, int y);
 void GetFPS();
 
 Camera camera;
@@ -41,6 +47,10 @@ uint32_t frameCount = 0, timeBase = 0;
 uint32_t width, height;
 GLuint pbo;
 GLuint textureId;
+
+// mouse movement variables
+int lastX = -1, lastY = -1;
+MouseMovementType mmType = MOUSE_NONE;
 
 Pathtracer *pathtracer = NULL;
 
@@ -56,8 +66,8 @@ bool InitGL(int argc, char** argv) {
     glutDisplayFunc(Display);
 	glutIdleFunc(Idle);
     glutKeyboardFunc(Keyboard);
-	//TODO mouse camera movement
-    //glutMotionFunc(motion);
+	glutMouseFunc(Mouse);
+    glutMotionFunc(Motion);
 	glutSpecialFunc(PressKey);
 
 	glewInit();
@@ -227,50 +237,130 @@ void Idle() {
 
 void Keyboard(unsigned char key, int /*x*/, int /*y*/) {
     switch (key) {
-        case (27) :
+        case (27):
             exit(EXIT_SUCCESS);
             break;
-        case 'r' :
-            exit(EXIT_SUCCESS);
+        case 'r':
+            pathtracer->Reset();
             break;
 	}
 }
 
-/**
- * TODO camera movement through keyboard commands
- */
 void PressKey(int key, int /*x*/, int /*y*/) {
-	if(glutGetModifiers()==GLUT_ACTIVE_CTRL) {
-		switch(key) {
-			case GLUT_KEY_UP:
-				camera.Translate(Vec(0.f, 0.f, CAM_TRANSLATE_DELTA));
-				break;
-			case GLUT_KEY_RIGHT:
-				camera.Translate(Vec(CAM_TRANSLATE_DELTA, 0.f, 0.f));
-				break;
-			case GLUT_KEY_DOWN:
-				camera.Translate(Vec(0.f, 0.f, -CAM_TRANSLATE_DELTA));
-				break;
-			case GLUT_KEY_LEFT:
-				camera.Translate(Vec(-CAM_TRANSLATE_DELTA, 0.f, 0.f));
-				break;
+	const int keyMod = glutGetModifiers();
+	const float camTranslateDelta = (keyMod & GLUT_ACTIVE_SHIFT)
+		? CAM_TRANSLATE_DELTA * 10 : CAM_TRANSLATE_DELTA;
+	const float camRotateDelta = (keyMod & GLUT_ACTIVE_SHIFT)
+		? CAM_ROTATE_DELTA * 10 : CAM_ROTATE_DELTA;
+
+	// ctrl-key pressed
+	if(keyMod & GLUT_ACTIVE_CTRL) {
+
+		// crtl-key + alt-key pressed
+		if(keyMod & GLUT_ACTIVE_ALT) {
+			switch(key) {
+				case GLUT_KEY_UP:
+					camera.Translate(Vec(0.f, camTranslateDelta, 0.f));
+					break;
+				case GLUT_KEY_RIGHT:
+					camera.Translate(Vec(camTranslateDelta, 0.f, 0.f));
+					break;
+				case GLUT_KEY_DOWN:
+					camera.Translate(Vec(0.f, -camTranslateDelta, 0.f));
+					break;
+				case GLUT_KEY_LEFT:
+					camera.Translate(Vec(-camTranslateDelta, 0.f, 0.f));
+					break;
+			}
+
+		} else {
+			switch(key) {
+				case GLUT_KEY_UP:
+					camera.Translate(Vec(0.f, 0.f, camTranslateDelta));
+					break;
+				case GLUT_KEY_RIGHT:
+					camera.Translate(Vec(camTranslateDelta, 0.f, 0.f));
+					break;
+				case GLUT_KEY_DOWN:
+					camera.Translate(Vec(0.f, 0.f, -camTranslateDelta));
+					break;
+				case GLUT_KEY_LEFT:
+					camera.Translate(Vec(-camTranslateDelta, 0.f, 0.f));
+					break;
+			}
 		}
+
+	// no modifier key active
 	} else {
 		switch(key) {
 			case GLUT_KEY_UP:
-				camera.Rotate(Vec(0.f, CAM_ROTATE_DELTA, 0.f));
+				camera.Rotate(Vec(0.f, camRotateDelta, 0.f));
 				break;
 			case GLUT_KEY_RIGHT:
-				camera.Rotate(Vec(-CAM_ROTATE_DELTA, 0.f, 0.f));
+				camera.Rotate(Vec(-camRotateDelta, 0.f, 0.f));
 				break;
 			case GLUT_KEY_DOWN:
-				camera.Rotate(Vec(0.f, -CAM_ROTATE_DELTA, 0.f));
+				camera.Rotate(Vec(0.f, -camRotateDelta, 0.f));
 				break;
 			case GLUT_KEY_LEFT:
-				camera.Rotate(Vec(CAM_ROTATE_DELTA, 0.f, 0.f));
+				camera.Rotate(Vec(camRotateDelta, 0.f, 0.f));
 				break;
 		}
+	}
 }
+
+void Mouse(int button, int state, int x, int y) {
+	if(button == GLUT_LEFT_BUTTON) {
+		// mouse button pressed
+		if(state == GLUT_DOWN) {
+			mmType = MOUSE_ROTATION;
+			lastX = x;
+			lastY = y;
+		}
+		else if(state == GLUT_UP)
+			mmType = MOUSE_NONE;
+	}
+
+	else if(button == GLUT_MIDDLE_BUTTON) {
+		// mouse button pressed
+		if(state == GLUT_DOWN) {
+			mmType = MOUSE_TRANSLATION_XZ;
+			lastX = x;
+			lastY = y;
+		}
+		else if(state == GLUT_UP)
+			mmType = MOUSE_NONE;
+	}
+
+	else if(button == GLUT_RIGHT_BUTTON) {
+		// mouse button pressed
+		if(state == GLUT_DOWN) {
+			mmType = MOUSE_TRANSLATION_XY;
+			lastX = x;
+			lastY = y;
+		}
+		else if(state == GLUT_UP)
+			mmType = MOUSE_NONE;
+	}
+}
+
+void Motion(int x, int y) {
+	if(mmType != MOUSE_NONE) {
+		const float deltaX = (float)(x - lastX);
+		const float deltaY = (float)(y - lastY);
+
+		if(deltaX != 0.f || deltaY != 0.f) {
+			if(mmType == MOUSE_ROTATION)
+				camera.Rotate(Vec(-deltaX, -deltaY, 0.f) * 0.005f);
+			else if(mmType == MOUSE_TRANSLATION_XY)
+				camera.Translate(Vec(deltaX, -deltaY, 0.f)*0.25);
+			else if(mmType == MOUSE_TRANSLATION_XZ)
+				camera.Translate(Vec(deltaX, 0.f, -deltaY)*0.25);
+		}
+
+		lastX = x;
+		lastY = y;
+	}
 }
 
 void GetFPS() {

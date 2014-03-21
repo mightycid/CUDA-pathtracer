@@ -23,7 +23,7 @@
 #include "globals.h"
 
 /**
- * Perspective camera class with the possibility to controll the camera view
+ * Perspective camera class with the possibility to control the camera view
  */
 class Camera {
 public:

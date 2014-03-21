@@ -22,7 +22,6 @@
 
 #include "montecarlo.h"
 
-
 enum MaterialType { DIFFUSE, SPECULAR, TRANSMISSIVE };
 
 /**
@@ -73,14 +72,6 @@ inline Material CreateTransmissiveMaterial(const Color &color, float coef) {
 	Material mat;
 	mat.color = color;
 	mat.coef = coef;
-	mat.type = TRANSMISSIVE;
-	return mat;
-}
-
-inline Material CreateEmittingMaterial(const Color &color) {
-	Material mat;
-	mat.color = color;
-	mat.coef = 0.f;
 	mat.type = TRANSMISSIVE;
 	return mat;
 }
